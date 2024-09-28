@@ -2,19 +2,40 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import docker
 import os
+import subprocess
 
 app = FastAPI()
+
+# Docker 클라이언트 초기화
+def initialize_docker_client():
+    try:
+        client = docker.from_env()
+        # Docker가 실행 중인지 확인
+        client.ping()  # Docker 데몬에 핑을 보냄
+        return client
+    except docker.errors.DockerException:
+        # Docker 데몬이 실행 중이 아닐 경우
+        start_docker_daemon()
+        return docker.from_env()  # 다시 클라이언트 초기화
+
+def start_docker_daemon():
+    try:
+        # Docker 데몬 실행
+        subprocess.Popen(["dockerd"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print("Docker daemon is starting...")
+    except Exception as e:
+        print(f"Error starting Docker daemon: {str(e)}")
 
 # 요청으로 받을 데이터 모델 정의
 class RunScriptRequest(BaseModel):
     script_name: str
-    docker_host: str  # Docker 호스트 IP 주소 및 포트
 
 # 지정한 Python 파일을 Docker에서 실행
 @app.post("/run-docker-script")
 def run_docker_script(request: RunScriptRequest):
+    client = initialize_docker_client()  # Docker 클라이언트 초기화
+    
     script_name = request.script_name
-    docker_host = request.docker_host
 
     # 실행할 스크립트 경로 설정
     script_path = f"./{script_name}"
@@ -24,9 +45,6 @@ def run_docker_script(request: RunScriptRequest):
         raise HTTPException(status_code=404, detail="Script not found")
     
     try:
-        # Docker 클라이언트 초기화 (다른 IP의 Docker 데몬에 연결)
-        client = docker.DockerClient(base_url=f"tcp://{docker_host}")
-
         # Docker 이미지를 빌드
         build_response = client.images.build(
             path="./docker",  # Dockerfile이 있는 경로
