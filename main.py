@@ -5,17 +5,16 @@ import os
 
 app = FastAPI()
 
-# Docker 클라이언트 초기화
-client = docker.from_env()
-
 # 요청으로 받을 데이터 모델 정의
 class RunScriptRequest(BaseModel):
     script_name: str
+    docker_host: str  # Docker 호스트 IP 주소 및 포트
 
 # 지정한 Python 파일을 Docker에서 실행
 @app.post("/run-docker-script")
 def run_docker_script(request: RunScriptRequest):
     script_name = request.script_name
+    docker_host = request.docker_host
 
     # 실행할 스크립트 경로 설정
     script_path = f"./{script_name}"
@@ -25,6 +24,9 @@ def run_docker_script(request: RunScriptRequest):
         raise HTTPException(status_code=404, detail="Script not found")
     
     try:
+        # Docker 클라이언트 초기화 (다른 IP의 Docker 데몬에 연결)
+        client = docker.DockerClient(base_url=f"tcp://{docker_host}")
+
         # Docker 이미지를 빌드
         build_response = client.images.build(
             path="./docker",  # Dockerfile이 있는 경로
